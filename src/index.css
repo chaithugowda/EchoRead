@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme {
+  /* Paper — cool, low-glare greys. A reading surface, not a dashboard. */
+  --color-paper:        #F1F3F2;
+  --color-paper-raised: #FAFBFA;
+  --color-rule:         #D8DEDC;
+
+  /* Ink — deep slate teal reads softer than black over long sessions */
+  --color-ink:          #1D2A2C;
+  --color-ink-soft:     #5C6E70;
+  --color-ink-faint:    #93A2A3;
+
+  /* Accent — controls and interactive affordances */
+  --color-accent:       #216B65;
+  --color-accent-weak:  #DCEAE7;
+
+  /* Mark — the spoken word. Reserved. Nothing else in the app may use it. */
+  --color-mark:         #FFD24A;
+  --color-mark-weak:    #FFF0C2;
+
+  /* Status */
+  --color-good:         #2C7A5C;
+  --color-bad:          #9E4A2E;
+
+  --font-read: "Literata", Georgia, serif;
+  --font-ui:   "IBM Plex Sans", system-ui, sans-serif;
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+body { margin: 0; font-family: var(--font-ui); }
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
