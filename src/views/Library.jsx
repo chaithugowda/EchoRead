@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ACCEPTED, ParseError, documentFromText, parseCaptures, parseFile } from '../lib/parse'
 import Camera from '../components/Camera'
+import { OCR_LANGUAGES } from '../lib/script'
+import { parseScannedPdf } from '../lib/parse'
 import { deleteDoc, listDocs, listMarks, renameDoc, saveDoc, usage } from '../lib/store'
 import { loadSettings } from '../hooks/useReader'
 
@@ -20,6 +22,16 @@ export default function Library({ onOpen, wpm, theme, onTheme }) {
   const [draft, setDraft] = useState('')
   const [composing, setComposing] = useState(false)
   const [scanning, setScanning] = useState(false)
+  const [language, setLanguage] = useState(
+    () => localStorage.getItem('echoread.ocrLanguage') || 'eng',
+  )
+  // Held so a PDF whose text came out unreadable can be re-read with
+  // recognition without asking for the file again.
+  const [garbled, setGarbled] = useState(null)
+
+  useEffect(() => {
+    localStorage.setItem('echoread.ocrLanguage', language)
+  }, [language])
 
   const inputRef = useRef(null)
   const dragDepth = useRef(0)
@@ -43,12 +55,21 @@ export default function Library({ onOpen, wpm, theme, onTheme }) {
     async (file) => {
       setError(null)
       setBusy({ name: file.name, progress: 0, note: 'Opening' })
+      setGarbled(null)
       try {
-        const parsed = await parseFile(file, (update) =>
-          setBusy({ name: file.name, ...update }),
+        const parsed = await parseFile(
+          file,
+          (update) => setBusy({ name: file.name, ...update }),
+          { language },
         )
-        const record = await saveDoc(parsed)
         setBusy(null)
+
+        if (parsed.garbled) {
+          setGarbled({ file, parsed })
+          return
+        }
+
+        const record = await saveDoc(parsed)
         onOpen(record.id)
       } catch (problem) {
         setError(
@@ -59,8 +80,41 @@ export default function Library({ onOpen, wpm, theme, onTheme }) {
         setBusy(null)
       }
     },
-    [onOpen],
+    [onOpen, language],
   )
+
+  const recognizeInstead = useCallback(async () => {
+    if (!garbled) return
+    const { file } = garbled
+    setGarbled(null)
+    setError(null)
+    setBusy({ name: file.name, progress: 0, note: 'Preparing the recogniser' })
+
+    try {
+      const parsed = await parseScannedPdf(
+        file,
+        (update) => setBusy({ name: file.name, ...update }),
+        language,
+      )
+      const record = await saveDoc({ ...parsed, format: 'pdf' })
+      setBusy(null)
+      onOpen(record.id)
+    } catch (problem) {
+      setError(
+        problem instanceof ParseError
+          ? problem.message
+          : 'That PDF could not be recognised either.',
+      )
+      setBusy(null)
+    }
+  }, [garbled, language, onOpen])
+
+  const keepGarbled = useCallback(async () => {
+    if (!garbled) return
+    const record = await saveDoc(garbled.parsed)
+    setGarbled(null)
+    onOpen(record.id)
+  }, [garbled, onOpen])
 
   // Drop anywhere. Enter and leave also fire when the pointer crosses child
   // elements, so the depth counter stops the target flickering.
@@ -105,8 +159,11 @@ export default function Library({ onOpen, wpm, theme, onTheme }) {
       setError(null)
 
       try {
-        const parsed = await parseCaptures(canvases, title, (update) =>
-          setBusy({ name: title, ...update }),
+        const parsed = await parseCaptures(
+          canvases,
+          title,
+          (update) => setBusy({ name: title, ...update }),
+          language,
         )
         const record = await saveDoc(parsed)
         setBusy(null)
@@ -120,7 +177,7 @@ export default function Library({ onOpen, wpm, theme, onTheme }) {
         setBusy(null)
       }
     },
-    [onOpen],
+    [onOpen, language],
   )
 
   const startPasted = async () => {
@@ -156,7 +213,12 @@ export default function Library({ onOpen, wpm, theme, onTheme }) {
   return (
     <div className="min-h-screen text-text">
       {scanning && (
-        <Camera onDone={ingestCaptures} onCancel={() => setScanning(false)} />
+        <Camera
+          onDone={ingestCaptures}
+          onCancel={() => setScanning(false)}
+          language={language}
+          onLanguage={setLanguage}
+        />
       )}
 
       <div className="mx-auto max-w-4xl px-5 py-8 sm:px-6 sm:py-14">
@@ -165,9 +227,20 @@ export default function Library({ onOpen, wpm, theme, onTheme }) {
         <DropTarget
           dragging={dragging}
           busy={busy}
+          language={language}
+          onLanguage={setLanguage}
           onPick={() => inputRef.current?.click()}
           onScan={() => setScanning(true)}
         />
+
+        {garbled && (
+          <GarbledNotice
+            onRecognize={recognizeInstead}
+            onKeep={keepGarbled}
+            language={language}
+            onLanguage={setLanguage}
+          />
+        )}
 
         <input
           ref={inputRef}
@@ -285,7 +358,7 @@ function Masthead({ theme, onTheme, space }) {
   )
 }
 
-function DropTarget({ dragging, busy, onPick, onScan }) {
+function DropTarget({ dragging, busy, language, onLanguage, onPick, onScan }) {
   const hasCamera = typeof navigator !== 'undefined' && !!navigator.mediaDevices
 
   return (
@@ -350,9 +423,68 @@ function DropTarget({ dragging, busy, onPick, onScan }) {
             <p className="mt-2 text-sm leading-relaxed text-text-faint">
               PDF · Word · EPUB · Markdown · web pages · photos · plain text
             </p>
+            <label className="mt-4 inline-flex items-center gap-2 text-sm text-text-faint">
+              Scans and photos are in
+              <LanguagePicker value={language} onChange={onLanguage} />
+            </label>
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+function LanguagePicker({ value, onChange, className = '' }) {
+  return (
+    <select
+      aria-label="Recognition language"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`rounded-lg border border-edge bg-surface-2 px-2 py-1.5 text-sm text-text hover:border-edge-bright focus:border-accent focus:outline-none ${className}`}
+    >
+      {OCR_LANGUAGES.map((entry) => (
+        <option key={entry.code} value={entry.code}>
+          {entry.label}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+/**
+ * Offered when a PDF's text extracts into nonsense.
+ *
+ * Most Indian-language PDFs are built on legacy fonts that encode their script
+ * into ASCII slots, so extraction returns letters that spell nothing. The file
+ * is perfectly readable as an image, so recognition is the way in — but it is
+ * slow enough that it should be a choice rather than a surprise.
+ */
+function GarbledNotice({ onRecognize, onKeep, language, onLanguage }) {
+  return (
+    <div className="mt-4 rounded-xl border border-edge bg-surface/70 px-5 py-4">
+      <p className="text-sm leading-relaxed text-text">
+        The text in this PDF came out unreadable. That usually means it was
+        made with a font that stores its script in the wrong character slots,
+        which is common for Indian-language documents. Reading the pages as
+        images instead normally works.
+      </p>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          onClick={onRecognize}
+          className="rounded-full bg-accent px-5 py-2 text-sm text-void hover:opacity-90"
+        >
+          Read the pages as images
+        </button>
+        <LanguagePicker value={language} onChange={onLanguage} />
+        <button onClick={onKeep} className="text-sm text-text-soft hover:text-text">
+          Open it as it is
+        </button>
+      </div>
+
+      <p className="mt-3 text-sm text-text-faint">
+        Recognition takes a few seconds a page.
+      </p>
     </div>
   )
 }

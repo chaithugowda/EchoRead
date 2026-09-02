@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { OCR_LANGUAGES } from '../lib/script'
 
 /**
  * Photograph pages to read them.
@@ -9,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * before the shutter, rather than as advice in an error message once someone
  * has already photographed twenty pages badly.
  */
-export default function Camera({ onDone, onCancel }) {
+export default function Camera({ onDone, onCancel, language, onLanguage }) {
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const [pages, setPages] = useState([])
@@ -78,11 +79,25 @@ export default function Camera({ onDone, onCancel }) {
         <button onClick={onCancel} className="text-sm text-white/70 hover:text-white">
           Cancel
         </button>
-        <p className="tabular text-sm text-white/70">
-          {pages.length === 0
-            ? 'No pages yet'
-            : `${pages.length} page${pages.length === 1 ? '' : 's'}`}
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="tabular text-sm text-white/70">
+            {pages.length === 0
+              ? 'No pages yet'
+              : `${pages.length} page${pages.length === 1 ? '' : 's'}`}
+          </p>
+          <select
+            aria-label="Recognition language"
+            value={language}
+            onChange={(e) => onLanguage(e.target.value)}
+            className="rounded-lg border border-white/25 bg-black/50 px-2 py-1 text-sm text-white/90 focus:outline-none"
+          >
+            {OCR_LANGUAGES.map((entry) => (
+              <option key={entry.code} value={entry.code} className="text-black">
+                {entry.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="relative flex-1 overflow-hidden">

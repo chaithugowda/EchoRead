@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useReader } from '../hooks/useReader'
 import { buildDocument } from '../lib/parse'
+import { voiceInstallHelp } from '../lib/script'
 import { getDoc, getMark, saveMark, touchDoc } from '../lib/store'
 import Transport from '../components/Transport'
 
@@ -69,6 +70,8 @@ function Surface({ doc, restoreOffset, onExit, onWpm }) {
     activeToken,
     timingSource,
     wpm,
+    script,
+    matchesScript,
     playFrom,
     seek,
     stop,
@@ -76,13 +79,21 @@ function Surface({ doc, restoreOffset, onExit, onWpm }) {
     skip,
     changeRate,
     changeVoice,
-  } = useReader(doc.text)
+  } = useReader(doc.text, doc.script)
 
   const surfaceRef = useRef(null)
   const restored = useRef(false)
   const [readScale, setReadScale] = useState(
     () => Number(localStorage.getItem('echoread.readScale')) || 1,
   )
+  const [focusMode, setFocusMode] = useState(
+    () => localStorage.getItem('echoread.focus') !== 'off',
+  )
+  const [dismissedVoice, setDismissedVoice] = useState(false)
+
+  useEffect(() => {
+    localStorage.setItem('echoread.focus', focusMode ? 'on' : 'off')
+  }, [focusMode])
 
   useEffect(() => {
     localStorage.setItem('echoread.readScale', String(readScale))
@@ -207,7 +218,7 @@ function Surface({ doc, restoreOffset, onExit, onWpm }) {
   return (
     <div
       className="min-h-screen pb-40 text-text sm:pb-44"
-      style={{ '--read-scale': readScale }}
+      style={{ '--read-scale': readScale, '--read-leading': script.leading }}
     >
       <div className="mx-auto max-w-[38rem] px-5 py-8 sm:px-6 sm:py-12 lg:max-w-[42rem]">
         <header className="mb-8 flex items-start justify-between gap-4 sm:mb-10">
@@ -218,28 +229,59 @@ function Surface({ doc, restoreOffset, onExit, onWpm }) {
               {minutesLeft !== null && ` · about ${minutesLeft} min left`}
             </p>
           </div>
-          <button
-            onClick={leave}
-            className="-mr-2 shrink-0 rounded-full px-3 py-1.5 text-sm text-text-soft hover:text-text"
-          >
-            Library
-          </button>
+          <div className="-mr-2 flex shrink-0 items-center">
+            <button
+              onClick={() => setFocusMode((v) => !v)}
+              aria-pressed={focusMode}
+              title="Dim everything but the paragraph being read"
+              className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
+                focusMode ? 'text-mark' : 'text-text-soft hover:text-text'
+              }`}
+            >
+              Focus
+            </button>
+            <button
+              onClick={leave}
+              className="rounded-full px-3 py-1.5 text-sm text-text-soft hover:text-text"
+            >
+              Library
+            </button>
+          </div>
         </header>
 
-        <div ref={surfaceRef}>
-          {blocks.map((block) => (
-            <Block
-              key={block.start}
-              block={block}
-              tokens={tokens}
-              active={
-                activeToken >= block.tokenStart && activeToken <= block.tokenEnd
-                  ? activeToken
-                  : -1
-              }
-              onWord={playFrom}
-            />
-          ))}
+        {!matchesScript && !dismissedVoice && (
+          <VoiceNotice script={script} onDismiss={() => setDismissedVoice(true)} />
+        )}
+
+        {/*
+          Tapping the page plays or pauses. On a phone the transport is a long
+          reach from where the thumb rests while reading, and the page itself
+          is the largest target on screen. Taps that land on a word still jump
+          there — that gesture is more specific, so it wins.
+        */}
+        <div
+          ref={surfaceRef}
+          onClick={(event) => {
+            if (!event.target.closest('[data-token]')) toggle()
+          }}
+        >
+          {blocks.map((block) => {
+            const active =
+              activeToken >= block.tokenStart && activeToken <= block.tokenEnd
+                ? activeToken
+                : -1
+
+            return (
+              <Block
+                key={block.start}
+                block={block}
+                tokens={tokens}
+                active={active}
+                dim={focusMode && status === 'playing' && active === -1}
+                onWord={playFrom}
+              />
+            )
+          })}
         </div>
       </div>
 
@@ -263,7 +305,7 @@ function Surface({ doc, restoreOffset, onExit, onWpm }) {
   )
 }
 
-const Block = memo(function Block({ block, tokens, active, onWord }) {
+const Block = memo(function Block({ block, tokens, active, dim, onWord }) {
   const words = []
 
   for (let i = block.tokenStart; i <= block.tokenEnd; i++) {
@@ -292,14 +334,51 @@ const Block = memo(function Block({ block, tokens, active, onWord }) {
 
   if (block.type === 'heading') {
     return (
-      <h2 className="mt-9 mb-3 font-read text-[1.15em] leading-snug sm:mt-11">
+      <h2
+        className={`mt-9 mb-3 font-read text-[1.15em] leading-snug sm:mt-11 ${
+          dim ? 'dimmed' : ''
+        }`}
+      >
         {words}
       </h2>
     )
   }
 
-  return <p className="measure mb-5 font-read text-text">{words}</p>
+  return (
+    <p className={`measure mb-5 font-read text-text ${dim ? 'dimmed' : ''}`}>
+      {words}
+    </p>
+  )
 })
+
+/**
+ * Shown when no installed voice can pronounce the document.
+ *
+ * Reading Kannada with an English voice produces silence or noise, and either
+ * looks like the app is broken. Naming the problem and giving the steps for
+ * this particular platform is the only useful thing to do, since the voice
+ * lives in the operating system and cannot be supplied from a web page.
+ */
+function VoiceNotice({ script, onDismiss }) {
+  return (
+    <div className="mb-8 rounded-xl border border-edge bg-surface/70 px-5 py-4">
+      <p className="text-sm leading-relaxed text-text">
+        This document is in {script.label}, and no {script.label} voice is
+        installed on this device. Speech comes from your operating system, so
+        it has to be added there.
+      </p>
+      <p className="mt-2.5 text-sm leading-relaxed text-text-soft">
+        {voiceInstallHelp(script)}
+      </p>
+      <button
+        onClick={onDismiss}
+        className="mt-3 text-sm text-accent hover:underline"
+      >
+        Read it silently for now
+      </button>
+    </div>
+  )
+}
 
 /**
  * Did recognition doubt this word?
