@@ -10,8 +10,8 @@ Hosted on GitHub Pages.
 | Phase | Scope | Status |
 |-------|-------|--------|
 | 0 | Repo, build, automatic deploy, browser capability check | done |
-| 1 | Paste text, playback controls, speed, voice picker, word highlighting | next |
-| 2 | Read PDF, DOCX, EPUB and TXT files in the browser | |
+| 1 | Paste text, playback controls, speed, voice picker, word highlighting | done |
+| 2 | Read PDF, DOCX, EPUB and TXT files in the browser | next |
 | 3 | Library and reading position, stored in IndexedDB | |
 | 4 | Scan printed pages with the camera and read them aloud | |
 | 5 | Summaries, quizzes, and questions about the document | |
@@ -53,6 +53,28 @@ time. Some engines never fire them, and then the only option is to estimate
 word timing from the speech rate — a fallback that drifts on long passages and
 needs separate handling. Run the check on every device you intend to support
 before Phase 1 starts.
+
+## How word highlighting works
+
+Highlighting normally follows `boundary` events, which report the exact
+character the engine is speaking. Many voices never fire them — network voices
+in particular — so the reader carries two mechanisms and picks per voice at
+runtime:
+
+- **Engine timing.** Boundary events arrive, and the highlight follows them
+  exactly. Always preferred; detected on the first event of a passage.
+- **Estimated timing.** No events arrive, so a timer advances the highlight,
+  giving each word a share of the passage in proportion to its length and any
+  trailing punctuation. Every passage that finishes reports its real duration,
+  which corrects the speaking-rate estimate, so the fit tightens as it reads.
+
+Text is spoken as short passages rather than one long utterance. That keeps
+each one under Chrome's fifteen-second cutoff, gives skip controls somewhere to
+land, and — since a passage ending is a position the engine confirms — stops
+estimated timing from drifting over a long document.
+
+The status line above the controls says when timing is being estimated, so the
+imprecision is never a mystery.
 
 ## Design
 
