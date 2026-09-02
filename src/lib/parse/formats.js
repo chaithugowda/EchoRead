@@ -1,4 +1,4 @@
-import { ParseError, stripExtension } from './pdf'
+import { ParseError, stripExtension } from './layout'
 
 /**
  * Word documents.

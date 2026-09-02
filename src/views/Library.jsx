@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ACCEPTED, ParseError, documentFromText, parseFile } from '../lib/parse'
+import { ACCEPTED, ParseError, documentFromText, parseCaptures, parseFile } from '../lib/parse'
+import Camera from '../components/Camera'
 import { deleteDoc, listDocs, listMarks, renameDoc, saveDoc, usage } from '../lib/store'
 import { loadSettings } from '../hooks/useReader'
 
@@ -18,6 +19,7 @@ export default function Library({ onOpen, wpm, theme, onTheme }) {
   const [dragging, setDragging] = useState(false)
   const [draft, setDraft] = useState('')
   const [composing, setComposing] = useState(false)
+  const [scanning, setScanning] = useState(false)
 
   const inputRef = useRef(null)
   const dragDepth = useRef(0)
@@ -40,10 +42,10 @@ export default function Library({ onOpen, wpm, theme, onTheme }) {
   const ingest = useCallback(
     async (file) => {
       setError(null)
-      setBusy({ name: file.name, progress: 0 })
+      setBusy({ name: file.name, progress: 0, note: 'Opening' })
       try {
-        const parsed = await parseFile(file, (progress) =>
-          setBusy({ name: file.name, progress }),
+        const parsed = await parseFile(file, (update) =>
+          setBusy({ name: file.name, ...update }),
         )
         const record = await saveDoc(parsed)
         setBusy(null)
@@ -93,6 +95,34 @@ export default function Library({ onOpen, wpm, theme, onTheme }) {
     }
   }, [ingest])
 
+  const ingestCaptures = useCallback(
+    async (canvases) => {
+      setScanning(false)
+      if (!canvases.length) return
+
+      const title = `Scan · ${new Date().toLocaleDateString()}`
+      setBusy({ name: title, progress: 0, note: 'Preparing the recogniser' })
+      setError(null)
+
+      try {
+        const parsed = await parseCaptures(canvases, title, (update) =>
+          setBusy({ name: title, ...update }),
+        )
+        const record = await saveDoc(parsed)
+        setBusy(null)
+        onOpen(record.id)
+      } catch (problem) {
+        setError(
+          problem instanceof ParseError
+            ? problem.message
+            : 'Those photographs could not be read.',
+        )
+        setBusy(null)
+      }
+    },
+    [onOpen],
+  )
+
   const startPasted = async () => {
     const text = draft.trim()
     if (!text) return
@@ -124,14 +154,19 @@ export default function Library({ onOpen, wpm, theme, onTheme }) {
   })
 
   return (
-    <div className="min-h-screen bg-void text-text">
-      <div className="mx-auto max-w-4xl px-6 py-10 sm:py-14">
+    <div className="min-h-screen text-text">
+      {scanning && (
+        <Camera onDone={ingestCaptures} onCancel={() => setScanning(false)} />
+      )}
+
+      <div className="mx-auto max-w-4xl px-5 py-8 sm:px-6 sm:py-14">
         <Masthead theme={theme} onTheme={onTheme} space={space} />
 
         <DropTarget
           dragging={dragging}
           busy={busy}
           onPick={() => inputRef.current?.click()}
+          onScan={() => setScanning(true)}
         />
 
         <input
@@ -226,9 +261,9 @@ export default function Library({ onOpen, wpm, theme, onTheme }) {
 
 function Masthead({ theme, onTheme, space }) {
   return (
-    <header className="mb-9 flex items-start justify-between gap-6">
-      <div>
-        <h1 className="font-read text-3xl tracking-tight">echoread</h1>
+    <header className="mb-8 flex items-start justify-between gap-4 sm:mb-9 sm:gap-6">
+      <div className="min-w-0">
+        <h1 className="font-read text-2xl tracking-tight sm:text-3xl">echoread</h1>
         <p className="mt-1.5 text-sm text-text-soft">
           Everything here stays on this device.
           {space && space.used > 0 && (
@@ -250,36 +285,70 @@ function Masthead({ theme, onTheme, space }) {
   )
 }
 
-function DropTarget({ dragging, busy, onPick }) {
+function DropTarget({ dragging, busy, onPick, onScan }) {
+  const hasCamera = typeof navigator !== 'undefined' && !!navigator.mediaDevices
+
   return (
     <div
-      className={`rounded-2xl border border-dashed transition-colors ${
-        dragging
-          ? 'border-accent bg-accent-soft'
-          : 'border-edge bg-surface/50 hover:border-edge-bright'
+      className={`relative rounded-2xl border transition-colors ${
+        dragging ? 'border-accent bg-accent-soft' : 'border-edge bg-surface/40'
       }`}
     >
-      <div className="px-8 py-11 text-center">
+      {/* Corner brackets rather than a dashed outline: they read as a target
+          being framed, which is what the area is, and they stay quiet when
+          nothing is being dragged over it. */}
+      {[
+        'left-0 top-0 border-l border-t rounded-tl-2xl',
+        'right-0 top-0 border-r border-t rounded-tr-2xl',
+        'left-0 bottom-0 border-l border-b rounded-bl-2xl',
+        'right-0 bottom-0 border-r border-b rounded-br-2xl',
+      ].map((corner) => (
+        <span
+          key={corner}
+          aria-hidden="true"
+          className={`pointer-events-none absolute h-6 w-6 transition-colors sm:h-8 sm:w-8 ${
+            dragging ? 'border-accent' : 'border-edge-bright'
+          } ${corner}`}
+        />
+      ))}
+
+      <div className="px-6 py-9 text-center sm:px-8 sm:py-11">
         {busy ? (
           <div>
-            <p className="text-sm text-text-soft">Reading {busy.name}…</p>
-            <div className="mx-auto mt-4 h-px w-56 bg-edge">
+            <p className="text-sm text-text-soft">
+              {busy.note ?? 'Opening'} · {busy.name}
+            </p>
+            <div className="mx-auto mt-4 h-px w-full max-w-56 bg-edge">
               <div
-                className="h-px bg-accent transition-[width] duration-200"
-                style={{ width: `${Math.max(5, busy.progress * 100)}%` }}
+                className="h-px bg-mark transition-[width] duration-200"
+                style={{ width: `${Math.max(4, (busy.progress ?? 0) * 100)}%` }}
               />
             </div>
+            {busy.scanning && (
+              <p className="mt-3 text-sm leading-relaxed text-text-faint">
+                Recognising text takes a few seconds a page, and the first run
+                downloads language data.
+              </p>
+            )}
           </div>
         ) : (
           <>
             <p className="text-text">
-              Drop a document here, or{' '}
+              <span className="hidden sm:inline">Drop a document here, or </span>
               <button onClick={onPick} className="text-accent hover:underline">
                 choose a file
               </button>
+              {hasCamera && (
+                <>
+                  <span className="text-text-faint"> · </span>
+                  <button onClick={onScan} className="text-accent hover:underline">
+                    scan a page
+                  </button>
+                </>
+              )}
             </p>
-            <p className="mt-2 text-sm text-text-faint">
-              PDF · Word · EPUB · Markdown · web pages · plain text
+            <p className="mt-2 text-sm leading-relaxed text-text-faint">
+              PDF · Word · EPUB · Markdown · web pages · photos · plain text
             </p>
           </>
         )}
@@ -331,13 +400,24 @@ function Row({ doc, mark, wpm, onOpen, onRename, onDelete }) {
     else setTitle(doc.title)
   }
 
+  const actions = confirming ? (
+    <>
+      <Action onClick={() => onDelete(doc.id)} tone="bad">Delete</Action>
+      <Action onClick={() => setConfirming(false)}>Keep</Action>
+    </>
+  ) : (
+    <>
+      <Action onClick={() => setEditing(true)}>Rename</Action>
+      <Action onClick={() => setConfirming(true)} tone="bad">Remove</Action>
+    </>
+  )
+
   return (
-    <div className="group relative flex items-stretch gap-4 overflow-hidden rounded-xl border border-edge bg-surface transition-colors hover:border-edge-bright">
+    <div className="group relative flex items-stretch overflow-hidden rounded-xl border border-edge bg-surface/70 transition-colors hover:border-edge-bright">
       {/*
         A spine down the left edge, filled to your position. Books have spines,
-        and the fill reads as depth into the document at a glance — quicker
-        than a percentage, and it makes a shelf of part-read things legible in
-        one sweep of the eye.
+        and the fill reads as depth into the document faster than a percentage
+        does — a shelf of part-read things is legible in one sweep of the eye.
       */}
       <div className="w-1 shrink-0 bg-surface-2">
         <div
@@ -346,7 +426,7 @@ function Row({ doc, mark, wpm, onOpen, onRename, onDelete }) {
         />
       </div>
 
-      <div className="min-w-0 flex-1 py-4 pr-4">
+      <div className="min-w-0 flex-1 py-3.5 pr-3 pl-3.5 sm:py-4 sm:pr-4">
         {editing ? (
           <input
             autoFocus
@@ -360,58 +440,47 @@ function Row({ doc, mark, wpm, onOpen, onRename, onDelete }) {
                 setEditing(false)
               }
             }}
-            className="w-full rounded-md border border-accent bg-void px-2 py-1 font-read text-lg text-text focus:outline-none"
+            className="w-full rounded-md border border-accent bg-void px-2 py-1 font-read text-base text-text focus:outline-none sm:text-lg"
           />
         ) : (
           <button
             onClick={() => onOpen(doc.id)}
-            className="block w-full truncate text-left font-read text-lg text-text hover:text-accent"
+            className="block w-full truncate text-left font-read text-base text-text hover:text-accent sm:text-lg"
           >
             {doc.title}
           </button>
         )}
 
-        <p className="tabular mt-1.5 text-sm text-text-faint">
+        <p className="tabular mt-1 text-sm text-text-faint">
           {doc.format.toUpperCase()} · {doc.words.toLocaleString()} words
-          {fraction > 0.005 && ` · ${percent}% read`}
+          {fraction > 0.005 && ` · ${percent}%`}
           {minutes !== null && fraction < 0.995 && ` · ${formatMinutes(minutes)} left`}
         </p>
+
+        {/* Below the title on a phone, where a third column would squeeze the
+            title to nothing. Beside it from tablet width up. */}
+        <div className="-ml-2 mt-1 flex gap-0.5 sm:hidden">{actions}</div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 pr-3 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-        {confirming ? (
-          <>
-            <button
-              onClick={() => onDelete(doc.id)}
-              className="rounded-full px-3 py-1.5 text-sm text-bad hover:bg-bad/10"
-            >
-              Delete
-            </button>
-            <button
-              onClick={() => setConfirming(false)}
-              className="rounded-full px-3 py-1.5 text-sm text-text-soft hover:text-text"
-            >
-              Keep
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={() => setEditing(true)}
-              className="rounded-full px-3 py-1.5 text-sm text-text-soft hover:text-text"
-            >
-              Rename
-            </button>
-            <button
-              onClick={() => setConfirming(true)}
-              className="rounded-full px-3 py-1.5 text-sm text-text-soft hover:text-bad"
-            >
-              Remove
-            </button>
-          </>
-        )}
+      <div className="hidden shrink-0 items-center gap-0.5 pr-3 transition-opacity sm:flex lg:opacity-0 lg:focus-within:opacity-100 lg:group-hover:opacity-100">
+        {actions}
       </div>
     </div>
+  )
+}
+
+function Action({ onClick, tone, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full px-2.5 py-1.5 text-sm transition-colors sm:px-3 ${
+        tone === 'bad'
+          ? 'text-text-soft hover:text-bad'
+          : 'text-text-soft hover:text-text'
+      }`}
+    >
+      {children}
+    </button>
   )
 }
 

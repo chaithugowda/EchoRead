@@ -13,8 +13,8 @@ Hosted on GitHub Pages.
 | 1 | Paste text, playback controls, speed, voice picker, word highlighting | done |
 | 2 | Read PDF, DOCX, EPUB and TXT files in the browser | done |
 | 3 | Library and reading position, stored in IndexedDB | done |
-| 4 | Scan printed pages with the camera and read them aloud | next |
-| 5 | Summaries, quizzes, and questions about the document | |
+| 4 | Scan printed pages with the camera and read them aloud | done |
+| 5 | Summaries, quizzes, and questions about the document | next |
 | 6 | Installable, works offline, tuned for phones | |
 
 ## Running it locally
@@ -82,11 +82,13 @@ Files are parsed in the browser; nothing is uploaded anywhere.
 
 | Format | Handled by | Notes |
 |--------|-----------|-------|
-| PDF | pdf.js | Text layer only. Scans need Phase 4. |
+| PDF | pdf.js | Falls back to recognition when there is no text layer |
 | DOCX | mammoth | Headings and lists preserved |
 | EPUB | JSZip | Chapters follow the spine, not filenames |
 | HTML | DOMParser | Scripts, styles and navigation removed |
 | TXT, MD | — | Markdown headings recognised |
+| Photos | Tesseract | JPG, PNG, WebP, HEIC |
+| Camera | Tesseract | Multi-page capture |
 
 Parsers load on demand. Together they are over a megabyte, and an app most
 people open to paste a paragraph should not pay for a PDF engine first.
@@ -108,8 +110,41 @@ produces text that looks acceptable and sounds wrong. Four repairs are applied:
 - **Hyphenated words are rejoined**, because "consid-" followed by "eration"
   is unlistenable.
 
-Scanned PDFs contain no text layer and are reported as such rather than opening
-empty.
+A PDF with almost no extractable text is a scan. Rather than opening empty, it
+is handed to recognition: the pages are drawn to images and read from there, so
+the same file opens by a different route.
+
+## Reading printed pages
+
+Photographs, scanned PDFs and the camera all end at the same place.
+
+**Preparation decides the result.** Before recognition sees an image it is
+converted to greyscale weighted for perceived brightness, then reduced to pure
+black and white using Otsu's method, which finds the threshold best separating
+the image into two groups. A fixed threshold cannot serve both a bright scan
+and a dim phone photograph; deriving one per image can. Where several
+thresholds score equally — a clean gap between ink and paper — the middle of
+that gap is taken, since it sits furthest from both and survives grain.
+
+**Doubtful words are marked.** Recognition scores every word it produces, and
+anything below the confidence floor is underlined in the reader. A misreading
+is much more confusing when it looks as certain as the words around it.
+
+**Framing guidance is shown live.** Accuracy depends on the photograph far more
+than on any setting, and a tilted page or your own shadow is obvious while
+framing and invisible afterwards.
+
+Limits worth knowing: recognition takes several seconds a page, language data
+is roughly ten megabytes downloaded on first use, and handwriting will not
+work.
+
+### One threshold, two pipelines
+
+PDFs and recognition hand over the same shape of data — positioned lines — so
+both use the same paragraph reconstruction. The gap that separates paragraphs
+is measured from each document's own median line spacing rather than fixed,
+because ordinary leading is around twenty points and a constant set below it
+turns every single line into its own paragraph.
 
 ## The library
 
@@ -162,6 +197,23 @@ one memorable image rather than scattered effects.
 - Library rows carry a filled spine down their left edge showing how far into
   each document you are — books have spines, and a shelf of part-read things
   is legible in one sweep of the eye.
+- The play button wears a progress ring, putting position where the eye already
+  goes to start and stop.
+- Corner brackets frame the drop target and the camera view, marking a target
+  without covering what is being lined up inside it.
+
+### Across screen sizes
+
+Reading type scales fluidly with the viewport between a floor and a ceiling, so
+a phone gets phone-sized text and a tablet gets something closer to a book,
+with no breakpoint jumping mid-resize. A reader's own size control multiplies
+on top and is remembered.
+
+Speed, voice and text size sit inline on wide screens and move into a panel on
+phones, where the transport needs the whole bar. Library actions appear on
+hover only where hovering exists; on a touch screen they are always visible,
+stacked under the title rather than squeezing it. Safe-area insets are
+respected on both edges that meet a notch or a home indicator.
 
 ## Stack
 

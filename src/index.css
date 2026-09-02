@@ -31,6 +31,15 @@
   --good:        #4ADE9B;
   --bad:         #FF7A6B;
 
+  /* A cold light source above the page. Faint enough to read as depth rather
+     than decoration, and the only gradient anywhere in the interface. */
+  --horizon: radial-gradient(
+    120% 60% at 50% -10%,
+    #1B2A4A 0%,
+    #101A2E 38%,
+    var(--void) 72%
+  );
+
   color-scheme: dark;
 }
 
@@ -54,6 +63,13 @@
 
   --good:        #12855F;
   --bad:         #B4402C;
+
+  --horizon: radial-gradient(
+    120% 60% at 50% -10%,
+    #FFFFFF 0%,
+    #EEF2FA 40%,
+    var(--void) 75%
+  );
 
   color-scheme: light;
 }
@@ -86,6 +102,15 @@ html {
   background: var(--void);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  /* Stops iOS inflating text in landscape, which would break the measured
+     line length the reading surface depends on. */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--horizon);
+  background-attachment: fixed;
+  min-height: 100dvh;
 }
 
 body {
@@ -97,6 +122,13 @@ body {
    horizontally with proportional numerals. Tabular ones hold their column. */
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Words recognition was unsure of. Marked quietly — a misreading is worth
+   knowing about, but it must never compete with the reading position. */
+.doubt {
+  text-decoration: underline dotted var(--edge-bright);
+  text-underline-offset: 4px;
 }
 
 /* The spoken word. The glow is what makes it read as a light source rather
@@ -117,6 +149,28 @@ body {
 
 ::selection {
   background: var(--accent-soft);
+}
+
+/* Room for the home indicator and notch, on the two edges that touch them. */
+.safe-bottom {
+  padding-bottom: max(0.875rem, env(safe-area-inset-bottom));
+}
+
+/*
+ * The reading measure.
+ *
+ * Type scales with the viewport between a floor and a ceiling, so a phone gets
+ * text sized for a phone and a tablet gets something closer to a book, without
+ * a breakpoint jumping between the two mid-resize. The multiplier is the
+ * reader's own size control, applied on top.
+ */
+.measure {
+  font-size: calc(var(--read-scale, 1) * clamp(1.0625rem, 0.97rem + 0.55vw, 1.35rem));
+  line-height: 1.85;
+}
+
+@media (min-width: 640px) {
+  .measure { line-height: 1.95; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -80,6 +80,13 @@ function Surface({ doc, restoreOffset, onExit, onWpm }) {
 
   const surfaceRef = useRef(null)
   const restored = useRef(false)
+  const [readScale, setReadScale] = useState(
+    () => Number(localStorage.getItem('echoread.readScale')) || 1,
+  )
+
+  useEffect(() => {
+    localStorage.setItem('echoread.readScale', String(readScale))
+  }, [readScale])
 
   useEffect(() => {
     onWpm?.(wpm)
@@ -198,11 +205,14 @@ function Surface({ doc, restoreOffset, onExit, onWpm }) {
     : null
 
   return (
-    <div className="min-h-screen bg-void pb-44 text-text">
-      <div className="mx-auto max-w-3xl px-6 py-10 sm:py-14">
-        <header className="mb-10 flex items-baseline justify-between gap-5">
+    <div
+      className="min-h-screen pb-40 text-text sm:pb-44"
+      style={{ '--read-scale': readScale }}
+    >
+      <div className="mx-auto max-w-[38rem] px-5 py-8 sm:px-6 sm:py-12 lg:max-w-[42rem]">
+        <header className="mb-8 flex items-start justify-between gap-4 sm:mb-10">
           <div className="min-w-0">
-            <h1 className="truncate font-read text-xl">{doc.title}</h1>
+            <h1 className="truncate font-read text-lg sm:text-xl">{doc.title}</h1>
             <p className="tabular mt-1 text-sm text-text-faint">
               {doc.words.toLocaleString()} words
               {minutesLeft !== null && ` · about ${minutesLeft} min left`}
@@ -210,7 +220,7 @@ function Surface({ doc, restoreOffset, onExit, onWpm }) {
           </div>
           <button
             onClick={leave}
-            className="shrink-0 text-sm text-text-soft hover:text-text"
+            className="-mr-2 shrink-0 rounded-full px-3 py-1.5 text-sm text-text-soft hover:text-text"
           >
             Library
           </button>
@@ -246,6 +256,8 @@ function Surface({ doc, restoreOffset, onExit, onWpm }) {
         onSection={jumpSection}
         onRate={changeRate}
         onVoice={changeVoice}
+        readScale={readScale}
+        onReadScale={setReadScale}
       />
     </div>
   )
@@ -253,15 +265,26 @@ function Surface({ doc, restoreOffset, onExit, onWpm }) {
 
 const Block = memo(function Block({ block, tokens, active, onWord }) {
   const words = []
+
   for (let i = block.tokenStart; i <= block.tokenEnd; i++) {
+    const token = tokens[i]
+    const doubted = isDoubted(block, token)
+
     words.push(
-      <span key={tokens[i].start}>
+      <span key={token.start}>
         <button
           data-token={i}
           onClick={() => onWord(i)}
-          className={i === active ? 'spoken -mx-0.5 px-0.5 text-left' : 'text-left'}
+          title={doubted ? 'Recognition was unsure of this word' : undefined}
+          className={[
+            'text-left',
+            i === active ? 'spoken -mx-0.5 px-0.5' : '',
+            doubted ? 'doubt' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
         >
-          {tokens[i].text}
+          {token.text}
         </button>{' '}
       </span>,
     )
@@ -269,15 +292,25 @@ const Block = memo(function Block({ block, tokens, active, onWord }) {
 
   if (block.type === 'heading') {
     return (
-      <h2 className="mt-11 mb-3 font-read text-xl leading-snug sm:text-2xl">
+      <h2 className="mt-9 mb-3 font-read text-[1.15em] leading-snug sm:mt-11">
         {words}
       </h2>
     )
   }
 
-  return (
-    <p className="mb-5 font-read text-lg leading-[1.95] text-text sm:text-xl sm:leading-[1.95]">
-      {words}
-    </p>
-  )
+  return <p className="measure mb-5 font-read text-text">{words}</p>
 })
+
+/**
+ * Did recognition doubt this word?
+ *
+ * Doubts are recorded as character ranges within the block, so they survive
+ * being stored and reopened. A token counts as doubted if it overlaps one at
+ * all, since a range may cover punctuation the tokeniser split differently.
+ */
+function isDoubted(block, token) {
+  if (!block.uncertain?.length) return false
+  const from = token.start - block.start
+  const to = token.end - block.start
+  return block.uncertain.some(([a, b]) => from < b && to > a)
+}
