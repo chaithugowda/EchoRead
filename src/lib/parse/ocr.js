@@ -168,8 +168,9 @@ const LOW_CONFIDENCE = 72
  * the middle of a sentence is far more confusing when it looks as certain as
  * everything around it.
  */
-export async function recognizeImage(source, { language = 'eng', report } = {}) {
-  const engine = await getWorker(language, report)
+export async function recognizeImage(source, { language, report } = {}) {
+  const chosen = language || 'eng'
+  const engine = await getWorker(chosen, report)
   const prepared = prepareImage(source)
 
   const { data } = await engine.recognize(

@@ -1,6 +1,7 @@
 import { NoTextLayer, parsePdf, rasterizePdf } from './pdf'
 import { parseDocx, parseEpub, parseHtml, parseText } from './formats'
 import { ParseError, stripExtension } from './layout'
+import { detectScript, looksGarbled } from '../script'
 
 export { ParseError }
 
@@ -25,11 +26,14 @@ export const ACCEPTED =
  * most people open to paste a paragraph should not pay for a PDF engine and a
  * recognition engine before it draws anything.
  */
-export async function parseFile(file, report) {
+export async function parseFile(file, report, options = {}) {
   const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
 
   if (IMAGES.includes(extension)) {
-    return { ...(await parseImage(file, report)), format: extension }
+    return {
+      ...(await parseImage(file, report, options.language)),
+      format: extension,
+    }
   }
 
   const handler = HANDLERS.find((h) => h.extensions.includes(extension))
@@ -42,12 +46,23 @@ export async function parseFile(file, report) {
 
   try {
     const parsed = await handler.parse(file, report)
-    return { ...buildDocument(parsed), format: extension }
+    const document = { ...buildDocument(parsed), format: extension }
+
+    // Extraction can succeed and still return nothing readable, which is
+    // common for Indian-language PDFs built on legacy fonts. Say so rather
+    // than storing gibberish, and let the caller offer recognition instead.
+    if (extension === 'pdf' && looksGarbled(document.text)) {
+      document.garbled = true
+    }
+    return document
   } catch (error) {
     // A PDF with no text layer is a scan. Recognition can still read it, so
     // the same file opens by the other route rather than failing.
     if (error instanceof NoTextLayer) {
-      return { ...(await parseScannedPdf(file, report)), format: 'pdf' }
+      return {
+        ...(await parseScannedPdf(file, report, options.language)),
+        format: 'pdf',
+      }
     }
     if (error instanceof ParseError) throw error
     throw new ParseError(
@@ -57,12 +72,13 @@ export async function parseFile(file, report) {
   }
 }
 
-async function parseImage(file, report) {
+async function parseImage(file, report, language) {
   const { recognizeImage, blocksFromPages } = await import('./ocr')
   report?.({ progress: 0.05, note: 'Preparing the recogniser' })
 
   const bitmap = await loadImage(file)
   const lines = await recognizeImage(bitmap, {
+    language,
     report: (update) => report?.(update),
   })
   bitmap.close?.()
@@ -79,7 +95,7 @@ async function parseImage(file, report) {
   return buildDocument({ title: stripExtension(file.name), blocks })
 }
 
-async function parseScannedPdf(file, report) {
+export async function parseScannedPdf(file, report, language) {
   const { recognizeImage, blocksFromPages } = await import('./ocr')
   const pages = []
 
@@ -89,7 +105,7 @@ async function parseScannedPdf(file, report) {
       note: `Reading page ${number} of ${total}`,
       scanning: true,
     })
-    pages.push(await recognizeImage(canvas))
+    pages.push(await recognizeImage(canvas, { language }))
     report?.({
       progress: number / total,
       note: `Reading page ${number} of ${total}`,
@@ -106,7 +122,7 @@ async function parseScannedPdf(file, report) {
 }
 
 /** Recognise images already captured by the camera. */
-export async function parseCaptures(canvases, title, report) {
+export async function parseCaptures(canvases, title, report, language) {
   const { recognizeImage, blocksFromPages } = await import('./ocr')
   const pages = []
 
@@ -185,5 +201,7 @@ export function buildDocument({ title, blocks }) {
   }
 
   const words = text.trim() ? text.trim().split(/\s+/).length : 0
-  return { title, text, blocks: spans, words }
+  const script = detectScript(text)
+
+  return { title, text, blocks: spans, words, script: script.id }
 }
