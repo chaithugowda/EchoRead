@@ -11,8 +11,36 @@ export const speechSupported =
 const DEFAULT_WPM = 155
 
 const STORE_KEY = 'echoread.settings'
+const WPM_KEY = 'echoread.rates'
 
-function loadSettings() {
+/**
+ * Remembered speaking rates, one per voice.
+ *
+ * The engine takes several passages to work out how fast a voice actually
+ * talks. Keeping the answer means that only happens once ever, rather than at
+ * the start of every document — so estimated highlighting is accurate from
+ * the first sentence on any voice used before.
+ */
+function loadRates() {
+  try {
+    return JSON.parse(localStorage.getItem(WPM_KEY)) || {}
+  } catch {
+    return {}
+  }
+}
+
+function saveRate(voiceURI, wpm) {
+  if (!voiceURI) return
+  try {
+    const rates = loadRates()
+    rates[voiceURI] = Math.round(wpm)
+    localStorage.setItem(WPM_KEY, JSON.stringify(rates))
+  } catch {
+    // Nothing to do; the rate is recalculated next time instead.
+  }
+}
+
+export function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(STORE_KEY)) || {}
   } catch {
@@ -73,6 +101,7 @@ export function useReader(text) {
   const [status, setStatus] = useState('idle')
   const [activeToken, setActiveToken] = useState(-1)
   const [timingSource, setTimingSource] = useState(null)
+  const [wpm, setWpm] = useState(DEFAULT_WPM)
 
   // Refs shadow the reactive values because utterance callbacks fire outside
   // React's render cycle and would otherwise read stale state.
@@ -135,6 +164,9 @@ export function useReader(text) {
 
   useEffect(() => {
     voiceRef.current = voices.find((v) => v.voiceURI === voiceURI) || null
+    const remembered = loadRates()[voiceURI]
+    wpmRef.current = remembered || DEFAULT_WPM
+    setWpm(wpmRef.current)
   }, [voices, voiceURI])
 
   const setActive = useCallback((index) => {
@@ -217,6 +249,8 @@ export function useReader(text) {
 
     const blended = wpmRef.current * 0.7 + measured * 0.3
     wpmRef.current = Math.min(600, Math.max(60, blended))
+    setWpm(wpmRef.current)
+    saveRate(voiceRef.current?.voiceURI, wpmRef.current)
   }, [])
 
   const speakFrom = useCallback(
@@ -328,6 +362,18 @@ export function useReader(text) {
     setActive(-1)
   }, [stopEstimator, setActive])
 
+  /** Move the highlight without speaking — used to restore a saved position. */
+  const seek = useCallback(
+    (tokenIndex) => {
+      generation.current++
+      stopEstimator()
+      if (speechSupported) window.speechSynthesis.cancel()
+      setActive(Math.max(0, Math.min(tokenIndex, tokens.length - 1)))
+      setStatus('paused')
+    },
+    [tokens.length, setActive, stopEstimator],
+  )
+
   const toggle = useCallback(() => {
     if (status === 'playing') pause()
     else playFrom(activeRef.current < 0 ? 0 : activeRef.current)
@@ -376,7 +422,6 @@ export function useReader(text) {
       setVoiceURI(uri)
       voiceRef.current = voices.find((v) => v.voiceURI === uri) || null
       setTimingSource(null)
-      wpmRef.current = DEFAULT_WPM
       if (status === 'playing') playFrom(activeRef.current)
     },
     [voices, status, playFrom],
@@ -398,7 +443,9 @@ export function useReader(text) {
     status,
     activeToken,
     timingSource,
+    wpm,
     playFrom,
+    seek,
     pause,
     stop,
     toggle,

@@ -1,48 +1,128 @@
 @import "tailwindcss";
 
-@theme {
-  /* Paper — cool, low-glare greys. A reading surface, not a dashboard. */
-  --color-paper:        #F1F3F2;
-  --color-paper-raised: #FAFBFA;
-  --color-rule:         #D8DEDC;
+/*
+ * Two themes, one structure. Semantic names are defined here as plain custom
+ * properties so a single attribute on <html> swaps the whole palette, then
+ * mapped into Tailwind's theme by reference. `@theme inline` is what allows
+ * that indirection — a plain `@theme` block would bake the dark values in and
+ * the light theme would never take effect.
+ */
 
-  /* Ink — deep slate teal reads softer than black over long sessions */
-  --color-ink:          #1D2A2C;
-  --color-ink-soft:     #5C6E70;
-  --color-ink-faint:    #93A2A3;
+:root {
+  --void:        #0B1220;
+  --surface:     #131C2E;
+  --surface-2:   #1A2438;
+  --edge:        #2A3550;
+  --edge-bright: #3A4870;
 
-  /* Accent — controls and interactive affordances */
-  --color-accent:       #216B65;
-  --color-accent-weak:  #DCEAE7;
+  --text:        #E8EDF7;
+  --text-soft:   #97A6C4;
+  --text-faint:  #64748B;
 
-  /* Mark — the spoken word. Reserved. Nothing else in the app may use it. */
-  --color-mark:         #FFD24A;
-  --color-mark-weak:    #FFF0C2;
+  --accent:      #8A7DFF;
+  --accent-soft: #8A7DFF26;
 
-  /* Status */
-  --color-good:         #2C7A5C;
-  --color-bad:          #9E4A2E;
+  /* The one warm colour in the interface. It marks the spoken word and is
+     used for nothing else, so the eye never has to hunt for the position. */
+  --mark:        #FFC94A;
+  --mark-ink:    #1A1200;
+  --mark-glow:   0 0 22px #FFC94A4D;
+
+  --good:        #4ADE9B;
+  --bad:         #FF7A6B;
+
+  color-scheme: dark;
+}
+
+[data-theme='light'] {
+  --void:        #F4F6FB;
+  --surface:     #FFFFFF;
+  --surface-2:   #EAEFF7;
+  --edge:        #D9E0EC;
+  --edge-bright: #B9C4D8;
+
+  --text:        #111A2B;
+  --text-soft:   #55607A;
+  --text-faint:  #8B97AE;
+
+  --accent:      #5B4BE0;
+  --accent-soft: #5B4BE01F;
+
+  --mark:        #FFD758;
+  --mark-ink:    #1A1200;
+  --mark-glow:   none;
+
+  --good:        #12855F;
+  --bad:         #B4402C;
+
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-void:        var(--void);
+  --color-surface:     var(--surface);
+  --color-surface-2:   var(--surface-2);
+  --color-edge:        var(--edge);
+  --color-edge-bright: var(--edge-bright);
+
+  --color-text:        var(--text);
+  --color-text-soft:   var(--text-soft);
+  --color-text-faint:  var(--text-faint);
+
+  --color-accent:      var(--accent);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-mark:        var(--mark);
+  --color-mark-ink:    var(--mark-ink);
+
+  --color-good:        var(--good);
+  --color-bad:         var(--bad);
 
   --font-read: "Literata", Georgia, serif;
-  --font-ui:   "IBM Plex Sans", system-ui, sans-serif;
+  --font-ui:   "Sora", system-ui, sans-serif;
 }
 
 html {
-  background: var(--color-paper);
-  color: var(--color-ink);
+  background: var(--void);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
 }
 
-body { margin: 0; font-family: var(--font-ui); }
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+}
+
+/* Figures that change in place — durations, percentages, counts — jitter
+   horizontally with proportional numerals. Tabular ones hold their column. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The spoken word. The glow is what makes it read as a light source rather
+   than a coloured rectangle, and it is switched off in the light theme where
+   a glow on white looks like a rendering fault. */
+.spoken {
+  background: var(--mark);
+  color: var(--mark-ink);
+  box-shadow: var(--mark-glow);
+  border-radius: 3px;
+}
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
+  border-radius: 3px;
+}
+
+::selection {
+  background: var(--accent-soft);
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

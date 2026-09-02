@@ -12,8 +12,8 @@ Hosted on GitHub Pages.
 | 0 | Repo, build, automatic deploy, browser capability check | done |
 | 1 | Paste text, playback controls, speed, voice picker, word highlighting | done |
 | 2 | Read PDF, DOCX, EPUB and TXT files in the browser | done |
-| 3 | Library and reading position, stored in IndexedDB | next |
-| 4 | Scan printed pages with the camera and read them aloud | |
+| 3 | Library and reading position, stored in IndexedDB | done |
+| 4 | Scan printed pages with the camera and read them aloud | next |
 | 5 | Summaries, quizzes, and questions about the document | |
 | 6 | Installable, works offline, tuned for phones | |
 
@@ -111,17 +111,57 @@ produces text that looks acceptable and sounds wrong. Four repairs are applied:
 Scanned PDFs contain no text layer and are reported as such rather than opening
 empty.
 
+## The library
+
+Documents are kept in IndexedDB, not localStorage: localStorage caps around
+five megabytes and writes synchronously, which would stall the page while a
+book is saved.
+
+Only extracted text is stored, never the original file. A twenty megabyte PDF
+reduces to a couple of hundred kilobytes, and a browser cannot re-open a file
+from disk on a later visit anyway.
+
+Documents and reading positions live in separate stores. A document runs to
+hundreds of kilobytes and is written once; a position is one number written
+every few seconds while reading. Keeping them apart means following along does
+not rewrite the whole book each time.
+
+**Positions are character offsets, not word numbers.** Word numbering depends
+on how the parser split the text, so improving the parser later would silently
+move every saved position in the library. A character offset survives that, and
+lands on the right sentence even if it drifts by a word.
+
+The app asks for persistent storage on load. Without it the browser treats the
+library as disposable and may clear it when the device runs short of space.
+
+Measured speaking rates are remembered per voice, so estimated highlighting is
+accurate from the first sentence on any voice used before, rather than needing
+several passages to settle each time.
+
 ## Design
 
 The reading surface is the product, so the interface is built as a reading
 environment rather than a dashboard.
 
-- **Literata** for text being read; it was drawn for long-form screen reading.
-- **IBM Plex Sans** for controls, so chrome never competes with content.
-- Amber `#FFD24A` marks the spoken word and nothing else. Reserving one colour
-  for one meaning keeps the highlight readable at a glance.
-- Ink is a deep slate teal rather than black, which is easier on the eyes over
-  a long session.
+The interface is built as a cold instrument holding one warm light.
+
+Chrome is deep blue-black with thin, precise edges and a cool violet for
+controls. Everything in it is dim and quiet. The spoken word is the only warm
+colour anywhere in the application, and on the dark theme it genuinely glows —
+so the reading position is impossible to lose on a dense page, and the app has
+one memorable image rather than scattered effects.
+
+- **Literata** for text being read; it was drawn for long-form screen reading,
+  and legibility outranks style on the surface people actually read.
+- **Sora** for controls — geometric and forward-looking, without competing
+  with the text.
+- Amber marks the spoken word and nothing else. One colour, one meaning.
+- Both themes ship, dark by default. Reading long documents on a dark screen
+  does not suit everyone, and forcing it would be a usability failure dressed
+  up as a style decision.
+- Library rows carry a filled spine down their left edge showing how far into
+  each document you are — books have spines, and a shelf of part-read things
+  is legible in one sweep of the eye.
 
 ## Stack
 

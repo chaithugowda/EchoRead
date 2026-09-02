@@ -33,7 +33,7 @@ export async function parseFile(file, onProgress) {
 
   try {
     const parsed = await handler.parse(file, onProgress)
-    return assemble(parsed)
+    return { ...buildDocument(parsed), format: extension }
   } catch (error) {
     if (error instanceof ParseError) throw error
     throw new ParseError(
@@ -50,7 +50,10 @@ export function documentFromText(text, title = 'Pasted text') {
     .filter(Boolean)
     .map((part) => ({ type: 'para', text: part }))
 
-  return assemble({ title, blocks: blocks.length ? blocks : [{ type: 'para', text }] })
+  return buildDocument({
+    title,
+    blocks: blocks.length ? blocks : [{ type: 'para', text }],
+  })
 }
 
 /**
@@ -64,7 +67,7 @@ export function documentFromText(text, title = 'Pasted text') {
  * Blocks are joined with a blank line so the voice takes a breath between
  * them instead of running a heading into the paragraph beneath it.
  */
-function assemble({ title, blocks }) {
+export function buildDocument({ title, blocks }) {
   let text = ''
   const spans = []
 
