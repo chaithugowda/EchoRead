@@ -94,8 +94,14 @@
   --color-good:        var(--good);
   --color-bad:         var(--bad);
 
-  --font-read: "Literata", Georgia, serif;
-  --font-ui:   "Sora", system-ui, sans-serif;
+  /* Latin faces first, then Indic fallbacks. A font with no glyph for a
+     character is skipped rather than substituting a box, so listing them all
+     means any script in a document draws correctly even when scripts mix. */
+  --font-read: "Literata", "Noto Serif Kannada", "Noto Serif Devanagari",
+               "Noto Serif Tamil", "Noto Serif Telugu", "Noto Serif Malayalam",
+               "Noto Serif Bengali", "Noto Serif Gujarati",
+               "Noto Serif Gurmukhi", Georgia, serif;
+  --font-ui:   "Sora", "Noto Sans Kannada", system-ui, sans-serif;
 }
 
 html {
@@ -166,11 +172,18 @@ body {
  */
 .measure {
   font-size: calc(var(--read-scale, 1) * clamp(1.0625rem, 0.97rem + 0.55vw, 1.35rem));
-  line-height: 1.85;
+  /* Leading comes from the script. Kannada, Devanagari and their relatives
+     stack vowel signs above and below the baseline, and Latin leading clips
+     them — the marks collide with the line above. */
+  line-height: var(--read-leading, 1.85);
 }
 
-@media (min-width: 640px) {
-  .measure { line-height: 1.95; }
+/* Paragraphs other than the one being spoken, while focus mode is on. Dimming
+   rather than hiding keeps the page's shape intact, so you can still see how
+   much is left and scroll past it. */
+.dimmed {
+  opacity: 0.32;
+  transition: opacity 240ms ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
