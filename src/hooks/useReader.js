@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buildChunks, tokenAtIndex, tokenize, weighToken } from '../lib/tokenize'
+import { scriptById, voiceForScript } from '../lib/script'
 
 export const speechSupported =
   typeof window !== 'undefined' &&
@@ -74,7 +75,8 @@ function saveSettings(settings) {
  * first, but this is a property of the individual voice rather than of the
  * browser, so it is detected rather than assumed.
  */
-export function useReader(text) {
+export function useReader(text, scriptId) {
+  const script = scriptById(scriptId)
   const tokens = useMemo(() => tokenize(text), [text])
 
   const chunks = useMemo(() => {
@@ -145,22 +147,31 @@ export function useReader(text) {
     }
   }, [])
 
-  // Pick a sensible default: something local in the page's language, falling
-  // back to whatever the browser considers default.
+  /*
+   * Choose a voice that can actually pronounce this document.
+   *
+   * The document's script decides, not the browser's locale and not what was
+   * used last: a saved English voice handed Kannada produces silence or noise.
+   * When nothing installed matches, `matchesScript` goes false and the reader
+   * says so plainly instead of reading the text badly.
+   */
+  const [matchesScript, setMatchesScript] = useState(true)
+
   useEffect(() => {
     if (!voices.length) return
-    if (voiceURI && voices.some((v) => v.voiceURI === voiceURI)) return
 
-    const lang = navigator.language || 'en-US'
-    const preferred =
-      voices.find((v) => v.localService && v.lang === lang) ||
-      voices.find((v) => v.localService && v.lang.startsWith(lang.slice(0, 2))) ||
-      voices.find((v) => v.lang.startsWith(lang.slice(0, 2))) ||
-      voices.find((v) => v.default) ||
-      voices[0]
+    const match = voiceForScript(voices, script)
+    setMatchesScript(Boolean(match))
 
-    setVoiceURI(preferred.voiceURI)
-  }, [voices, voiceURI])
+    const current = voices.find((v) => v.voiceURI === voiceURI)
+    const currentFits =
+      current && current.lang.slice(0, 2) === script.lang.slice(0, 2)
+
+    if (currentFits) return
+
+    const preferred = match || voices.find((v) => v.default) || voices[0]
+    if (preferred) setVoiceURI(preferred.voiceURI)
+  }, [voices, voiceURI, script])
 
   useEffect(() => {
     voiceRef.current = voices.find((v) => v.voiceURI === voiceURI) || null
@@ -444,6 +455,8 @@ export function useReader(text) {
     activeToken,
     timingSource,
     wpm,
+    script,
+    matchesScript,
     playFrom,
     seek,
     pause,
