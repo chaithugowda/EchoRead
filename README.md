@@ -11,8 +11,8 @@ Hosted on GitHub Pages.
 |-------|-------|--------|
 | 0 | Repo, build, automatic deploy, browser capability check | done |
 | 1 | Paste text, playback controls, speed, voice picker, word highlighting | done |
-| 2 | Read PDF, DOCX, EPUB and TXT files in the browser | next |
-| 3 | Library and reading position, stored in IndexedDB | |
+| 2 | Read PDF, DOCX, EPUB and TXT files in the browser | done |
+| 3 | Library and reading position, stored in IndexedDB | next |
 | 4 | Scan printed pages with the camera and read them aloud | |
 | 5 | Summaries, quizzes, and questions about the document | |
 | 6 | Installable, works offline, tuned for phones | |
@@ -75,6 +75,41 @@ estimated timing from drifting over a long document.
 
 The status line above the controls says when timing is being estimated, so the
 imprecision is never a mystery.
+
+## Reading documents
+
+Files are parsed in the browser; nothing is uploaded anywhere.
+
+| Format | Handled by | Notes |
+|--------|-----------|-------|
+| PDF | pdf.js | Text layer only. Scans need Phase 4. |
+| DOCX | mammoth | Headings and lists preserved |
+| EPUB | JSZip | Chapters follow the spine, not filenames |
+| HTML | DOMParser | Scripts, styles and navigation removed |
+| TXT, MD | — | Markdown headings recognised |
+
+Parsers load on demand. Together they are over a megabyte, and an app most
+people open to paste a paragraph should not pay for a PDF engine first.
+
+### Getting prose out of a PDF
+
+A PDF stores positioned glyph runs, not sentences, so extracting them in order
+produces text that looks acceptable and sounds wrong. Four repairs are applied:
+
+- **Lines are rebuilt from glyph positions**, grouped by vertical position and
+  sorted horizontally, since drawing order is not always reading order.
+- **Running headers, footers and page numbers are dropped.** Anything short
+  that appears at the edge of most pages is furniture. Digits are masked before
+  comparing so page numbers still match each other.
+- **Wrapped lines are rejoined into paragraphs.** A line is only treated as
+  ending a paragraph if it stops short of the right margin, or the next line is
+  indented, or there is a vertical gap. Breaking on a full stop alone splits a
+  paragraph every time a sentence happens to land at a line end.
+- **Hyphenated words are rejoined**, because "consid-" followed by "eration"
+  is unlistenable.
+
+Scanned PDFs contain no text layer and are reported as such rather than opening
+empty.
 
 ## Design
 
