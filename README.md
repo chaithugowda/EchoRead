@@ -14,8 +14,9 @@ Hosted on GitHub Pages.
 | 2 | Read PDF, DOCX, EPUB and TXT files in the browser | done |
 | 3 | Library and reading position, stored in IndexedDB | done |
 | 4 | Scan printed pages with the camera and read them aloud | done |
-| 5 | Summaries, quizzes, and questions about the document | next |
-| 6 | Installable, works offline, tuned for phones | |
+| 5 | Kannada and Indic scripts, mobile reading | done |
+| 6 | Installable, works offline, tuned for phones | next |
+| 7 | Summaries, quizzes, and questions about the document | |
 
 ## Running it locally
 
@@ -173,6 +174,44 @@ Measured speaking rates are remembered per voice, so estimated highlighting is
 accurate from the first sentence on any voice used before, rather than needing
 several passages to settle each time.
 
+## Scripts other than Latin
+
+Three separate things depend on knowing a document's script, and each fails
+visibly on its own. Detection is by Unicode range, taken from a sample of the
+opening, with the dominant script winning — headings, numerals and stray
+English words appear in almost every non-Latin document.
+
+**Fonts.** Literata and Sora have no Indic glyphs, so the reading and interface
+stacks list Noto families after them. A font missing a glyph is skipped rather
+than substituted, so mixed-script documents draw correctly throughout.
+
+**Leading.** Kannada, Devanagari and their relatives stack vowel signs above
+and below the baseline, and Latin line spacing clips them against the line
+above. Leading is a property of the script, not a constant.
+
+**Voices.** The document's script picks the voice, not the browser's locale and
+not whatever was used last. There is deliberately no substitution: an English
+voice handed Kannada produces silence or noise, and a silent failure looks like
+a broken application. When nothing installed matches, the reader says so and
+gives the steps for that operating system, because the voice lives in the OS
+and cannot be supplied by a web page.
+
+### PDFs that extract into nonsense
+
+Most Indian-language PDFs are built on legacy fonts — Nudi, Baraha and their
+relatives — that store their script in Latin character slots. Extraction
+returns letters spelling nothing in any language. Two signals catch it:
+
+- Private-use codepoints, meaning the embedded font carries no Unicode map.
+- Latin-1 supplement density. Measured, the cases are far apart: heavily
+  accented French prose runs about eight per cent, legacy Kannada extraction
+  about fifty-five. The threshold sits at a fifth, in the gap between them.
+
+A flagged PDF is offered to recognition instead, which reads the pages as
+images and works regardless of how the font was built. Recognition covers
+Kannada, Hindi, Tamil, Telugu, Malayalam, Bengali, Gujarati, Marathi, Urdu and
+Arabic alongside the European languages.
+
 ## Design
 
 The reading surface is the product, so the interface is built as a reading
@@ -208,6 +247,12 @@ Reading type scales fluidly with the viewport between a floor and a ceiling, so
 a phone gets phone-sized text and a tablet gets something closer to a book,
 with no breakpoint jumping mid-resize. A reader's own size control multiplies
 on top and is remembered.
+
+Tapping the page plays or pauses, since the transport is a long reach from
+where a thumb rests while reading and the page is the largest target on screen;
+taps landing on a word still jump there, being the more specific gesture. Focus
+mode dims every paragraph but the one being spoken, which keeps the eye in
+place on a small screen without hiding how much is left.
 
 Speed, voice and text size sit inline on wide screens and move into a panel on
 phones, where the transport needs the whole bar. Library actions appear on
